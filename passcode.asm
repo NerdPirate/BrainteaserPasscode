@@ -32,11 +32,10 @@ _start:
           pinsrb    xmm0, eax, 7
           add       eax, 1
           pinsrb    xmm0, eax, 8
-          movdqa    xmm4, xmm0
-          pshufb    xmm4, [_mask_identity] ; create identity mask for later
+          movdqa    xmm4, [_mask_identity] ; create identity mask for later
           call      permute
           test      al, al
-          jz        _failure
+          jnz       _failure
 ; print Passcode: 
           mov       rdi, 1                  ; stdout
           mov       rsi, msg                ; addr output
@@ -171,7 +170,7 @@ print_digits:
 permute:
           call      chk_cnstrnts            ; cb(s) before while
           test      al, al
-          jnp       _exit_permute           ; if al is non-0, we are done
+          jz        _exit_permute           ; if al is 0, we are done
 
           pxor      xmm1, xmm1              ; c = 0
           xor       rdi, rdi                ; j = 0
@@ -179,18 +178,18 @@ _loop:
           mov       rsi, rdi                ; copy j into rsi
           call      extract_byte
           sub       rsi, rax                ; j - c[j]
-          jnz       _else
+          jbe       _else
 _inner_if:
           test      rdi, 1                  ; j & 0x1 
           jz        _inner_else             ; == 0 if even
-          call swap_bytes                   ;swap xmm0 indices c[j], j
+          call      swap_bytes              ;swap xmm0 indices c[j], j
           jmp       _afterinner_ifelse
 _inner_else:
-          call swap_bytes_0                 ; swap xmm0 indices 0, j
+          call      swap_bytes_0            ; swap xmm0 indices 0, j
 _afterinner_ifelse:
           call      chk_cnstrnts            ; cb(s) after inner if-else
           test      al, al
-          jnp       _exit_permute           ; if al is non-0, we are done
+          jz        _exit_permute           ; if al is 0, we are done
           call      extract_byte            ; c[j] += 1
           add       rax, 1
           call      insert_byte
@@ -203,7 +202,7 @@ _else:
 _after_ifelse:
           mov       rsi, rdi                ; copy j into rsi
           sub       rsi, 9                  ; j-9
-          jnz       _loop                   ; while j < n
+          jbe       _loop                   ; while j < n
 _exit_permute:
           ret
 
@@ -279,11 +278,11 @@ swap_bytes:
           movdqa    xmm1, xmm4              ; copy identity mask into xmm1
           call      insert_byte             ; byte j will come from position c[j]
           mov       rbx, rax                ; save rax ( c[j] )
-          mov       rdx, rdi                ; save rdi ( j )
+          mov       r10, rdi                ; save rdi ( j )
           mov       rax, rdi                ; move j into rax
           mov       rdi, rbx                ; move c[j] into rdi
           call      insert_byte             ; byte c[j] will come from position j
-          mov       rdi, rdx                ; restore rdi (j)
+          mov       rdi, r10                ; restore rdi (j)
           pshufb    xmm0, xmm1              ; do the digit swap
           movdqa    xmm1, xmm3              ; restore xmm1
           ret
@@ -298,11 +297,71 @@ swap_bytes_0:
           movdqa    xmm1, xmm3              ; restore xmm1
           ret
 
+; The security door passcode is a seven digit number whose digits
+; total 35. The fourth digit is three more than the first digit,
+; the fifth digit is four more than the second digit, the sixth
+; digit is one less than the fourth digit, the last digit is one
+; less than twice the second digit, and the sum of the first and
+; third digits is one more than the fourth digits. However, the
+; passcode has no repeated digits. Digits must be > 0 and < 10.
+; What is the passcode?
+
 chk_cnstrnts:
-          mov       rax, 1                  ; returns true
+          ; Add up elements and see if they total 35
+          ; Note: Performing horizontal add (e.g., phaddw) seems
+          ;   easier but is actually slower. Approximately 11 cpu
+          ;   cycles to implement below reduction and comparison
+          ;   using phaddw (reciprocal of throughput, not total
+          ;   latency), vs approximately 6 in current
+          ;   implementation. Based on instruction timing tables
+          ;   from Agner Fog for Intel Coffee Lake
+          movdqa    xmm3, xmm0
+          pshufb    xmm3, [_mask_reduce_4]
+          paddb     xmm3, xmm0
+          movdqa    xmm2, xmm3
+          pshufb    xmm2, [_mask_reduce_2]
+          paddb     xmm3, xmm2
+          pextrb    ebx, xmm3, 0             ; extract [0]+[2]+[4]+[6]
+          pextrb    ecx, xmm3, 1             ; extract [1]+[3]+[5]
+          mov       al, 35
+          sub al, bl
+          sub al, cl
+          jnz _exit_fail
+
+          ; TODO make efficient use of vectors to calculate
+          ;   multiple constraints simultaneously
+
+          ; The fourth digit is three more than the first digit
+          pextrb ebx, xmm0, 0 ; ebx is 1st digit [0]
+          pextrb eax, xmm0, 3 ; eax is 4th digit [3]
+          sub eax, 3
+          sub eax, ebx
+          jnz _exit_fail
+
+          ; The fifth digit is four more than the second digit
+          pextrb ebx, xmm0, 1 ; ebx is 2nd digit [1]
+          pextrb eax, xmm0, 4 ; eax is 5th digit [4]
+          sub eax, 4
+          sub eax, ebx
+          jnz _exit_fail
+
+          ; The sixth digit is one less than the fourth digit
+          pextrb ebx, xmm0, 3 ; ebx is 4th digit [3]
+          pextrb eax, xmm0, 5 ; eax is 6th digit [5]
+          add eax, 1
+          sub eax, ebx
+          jnz _exit_fail
+
+          ; TODO check other constraints
+
+
+_exit_pass:
+          mov al, 0
+_exit_fail:
           ret
 
           section   .data
+; printable characters
 fail_msg: db        "Failed to find passcode", 10
 msg:      db        "Passcode: "
 _0:       db        '0'          ; 0 character
@@ -319,13 +378,20 @@ _space:   db        ' '          ; space character
 _lf:      db        10           ; newline character
 _lb:      db        '['          ; [ char for testing
 _rb:      db        ']'          ; ] char for testing
+
 ; jump tables
 _table_extract:
           dq  _extract_byte_0,_extract_byte_1,_extract_byte_2,_extract_byte_3,_extract_byte_4,_extract_byte_5,_extract_byte_6,_extract_byte_7,_extract_byte_8
 _table_insert:
           dq  _insert_byte_0,_insert_byte_1,_insert_byte_2,_insert_byte_3,_insert_byte_4,_insert_byte_5,_insert_byte_6,_insert_byte_7,_insert_byte_8
+
 ; byte shuffle masks
           align 16
 _mask_identity:
-          db        0xFF,0,1,2,3,4,5,6,7,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF
-
+          db        0,1,2,3,4,5,6,7,8,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF
+          align 16
+_mask_reduce_4:
+          db        4,5,6,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF
+          align 16
+_mask_reduce_2:
+          db        2,3,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF

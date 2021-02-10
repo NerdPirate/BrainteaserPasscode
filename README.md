@@ -16,3 +16,8 @@ Using 9 variables, we permute through all possible combinations (9! possibilitie
 - It is very hard to find examples and clear documentation of SSE/AVX instructions such as PINSRB and PSHUFB. The Intel manual shows how to use the instructions in general terms, but not clear examples of syntax or the ordering of vector elements. Various forums, almost without exception, used compiler instrinsics instead of the mnemonics using ATT or Intel syntax.
 - Constructing a shuffle byte mask for PSHUFB was particularly unclear. The clue I needed (that may help others) is that most SIMD-type instructions in x86_64 indicate the source element in destination element order. Meaning that, for example, element 0 of your shuffle mask containing 4 indicates that the resulting vector should get element 0 from element 4.
 - One frustrating limitation of most AVX instructions (though this is somewhat remedied with the introduction of AVX512) is that the element selection has to be an immediate value. There is no dynamic selection of elements. I worked around this by using a lot of jump tables to avoid code duplication.
+
+### Instruction Timing ###
+- I made extensive use of Agner Fog's instruction tables
+- https://www.agner.org/optimize/instruction_tables.pdf
+- I'm developing this on a machine with a 4-core/8-thread Intel Core i7-8665U processor (Whiskey Lake). I based my rough timing calculations on the Coffee Lake tables, even though those are 9th gen.
