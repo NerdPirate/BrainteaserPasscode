@@ -6,10 +6,17 @@
           section   .text
           global    _start
 _start:
-; set bytes in SIMD register to each of the possible digits
+; load masks and start permuting
           movdqa    xmm0, [_mask_start]     ; set digits to 1-9 in order as a starting point
-          movdqa    xmm4, [_mask_identity]  ; create identity mask for later
-          xor       r12, r12                ; count the number of permutations we try
+          movdqa    xmm9, [_mask_identity]  ; create identity mask for later
+          movdqa    xmm10, [_mask_reduce_2]
+          movdqa    xmm11, [_mask_reduce_4]
+          movdqa    xmm12, [_mask_constraint_const] ; load constraints for later
+          movdqa    xmm13, [_mask_constraint_a]
+          movdqa    xmm14, [_mask_constraint_b]
+          movdqa    xmm15, [_mask_constraint_c]
+          mov       r14, _table_extract     ; load jump table bases
+          mov       r15, _table_insert
           call      permute
           test      al, al
           jnz       _failure
@@ -24,7 +31,6 @@ _start:
           mov       rsi, _lf                ; addr output
           mov       rdx, 1                  ; number of bytes
           call      print
-          ; TODO print counter value
           jmp       exit
 
 _failure:
@@ -40,13 +46,14 @@ exit:
           syscall                           ; invoke operating system to exit
 
 print:
+; TODO Get the makefile to do a text replacement here
+; I think this could run on a Mac by replacing the system call
           mov       rax, 1                  ; system call for write
           syscall                           ; invoke operating system to do the write
           ret
 
 print_digits:
           mov       rdi, 1                  ; stdout
-          ;pxor      xmm0, xmm0
           pextrb    rcx, xmm0, 0            ; extract 1st digit
           mov       rsi, _0                 ; address of '0'
           add       rsi, rcx                ; set output
@@ -113,8 +120,7 @@ print_digits:
           mov       rdx, 1                  ; number of bytes
           call      print
 
-          ; TODO testing
-
+; Print unused digits
           mov       rsi, _space             ; address of space
           mov       rdx, 1                  ; number of bytes
           call      print
@@ -169,12 +175,12 @@ _afterinner_ifelse:
           test      al, al
           jz        _exit_permute           ; if al is 0, we are done
           call      extract_byte            ; c[j] += 1
-          add       rax, 1
+          add       eax, 1
           call      insert_byte
           xor       rdi, rdi                ; j = 0
           jmp       _after_ifelse
 _else:    
-          xor       rax, rax
+          xor       eax, eax
           call      insert_byte             ; c[j] = 0, rdi is j, rax is 0;
           add       rdi, 1                  ; j++
 _after_ifelse:
@@ -184,43 +190,41 @@ _after_ifelse:
 _exit_permute:
           ret
 
-; Extract byte from arbitrary index in xmm1, index is in rdi, val returned in rax, only defined between indices 0-8
+; Extract byte from arbitrary index in xmm1, index is in rdi, val returned in eax, only defined between indices 0-8
 extract_byte:
-          mov       r11, _table_extract
-          lea       r8, [rdi*8+r11]
+          lea       r8, [rdi*8+r14]
           jmp       [r8]
 _extract_byte_0:
-          pextrb    rax, xmm1, 0
+          pextrb    eax, xmm1, 0
           ret
 _extract_byte_1:
-          pextrb    rax, xmm1, 1
+          pextrb    eax, xmm1, 1
           ret
 _extract_byte_2:
-          pextrb    rax, xmm1, 2
+          pextrb    eax, xmm1, 2
           ret
 _extract_byte_3:
-          pextrb    rax, xmm1, 3
+          pextrb    eax, xmm1, 3
           ret
 _extract_byte_4:
-          pextrb    rax, xmm1, 4
+          pextrb    eax, xmm1, 4
           ret
 _extract_byte_5:
-          pextrb    rax, xmm1, 5
+          pextrb    eax, xmm1, 5
           ret
 _extract_byte_6:
-          pextrb    rax, xmm1, 6
+          pextrb    eax, xmm1, 6
           ret
 _extract_byte_7:
-          pextrb    rax, xmm1, 7
+          pextrb    eax, xmm1, 7
           ret
 _extract_byte_8:
-          pextrb    rax, xmm1, 8
+          pextrb    eax, xmm1, 8
           ret
 
 ; Insert byte into arbitrary index in xmm1, index is in rdi, val to set is in eax, only defined between indices 0-8
 insert_byte:
-          mov       r11, _table_insert
-          lea       r8, [rdi*8+r11]
+          lea       r8, [rdi*8+r15]
           jmp       [r8]
 _insert_byte_0:
           pinsrb    xmm1, eax, 0
@@ -253,7 +257,7 @@ _insert_byte_8:
 swap_bytes:
           call      extract_byte            ; rax = c[j]
           movdqa    xmm3, xmm1              ; save xmm1 in xmm3
-          movdqa    xmm1, xmm4              ; copy identity mask into xmm1
+          movdqa    xmm1, xmm9              ; copy identity mask into xmm1
           call      insert_byte             ; byte j will come from position c[j]
           mov       rbx, rax                ; save rax ( c[j] )
           mov       r10, rdi                ; save rdi ( j )
@@ -267,7 +271,7 @@ swap_bytes:
 
 swap_bytes_0:
           movdqa    xmm3, xmm1              ; save xmm1 in xmm3 so we can create mask in xmm1
-          movdqa    xmm1, xmm4              ; copy identity mask into xmm1
+          movdqa    xmm1, xmm9              ; copy identity mask into xmm1
           pinsrb    xmm1, edi, 0            ; byte 0 will come from position j
           xor       rax, rax
           call      insert_byte             ; byte j will come from position 0
@@ -275,18 +279,7 @@ swap_bytes_0:
           movdqa    xmm1, xmm3              ; restore xmm1
           ret
 
-; The security door passcode is a seven digit number whose digits
-; total 35. The fourth digit is three more than the first digit,
-; the fifth digit is four more than the second digit, the sixth
-; digit is one less than the fourth digit, the last digit is one
-; less than twice the second digit, and the sum of the first and
-; third digits is one more than the fourth digits. However, the
-; passcode has no repeated digits. Digits must be > 0 and < 10.
-; What is the passcode?
-
 chk_cnstrnts:
-          inc       r12                     ; increment counter
-
           ; Add up elements and see if they total 35
           ; Note: Performing horizontal add (e.g., phaddw) seems
           ;   easier but is actually slower. Approximately 11 cpu
@@ -297,10 +290,10 @@ chk_cnstrnts:
           ;   account.) Based on instruction timing tables from
           ;   Agner Fog for Intel Coffee Lake.
           movdqa    xmm3, xmm0
-          pshufb    xmm3, [_mask_reduce_4]
+          pshufb    xmm3, xmm11
           paddb     xmm3, xmm0
           movdqa    xmm2, xmm3
-          pshufb    xmm2, [_mask_reduce_2]
+          pshufb    xmm2, xmm10
           paddb     xmm3, xmm2
           pextrb    ebx, xmm3, 0             ; extract [0]+[2]+[4]+[6]
           pextrb    ecx, xmm3, 1             ; extract [1]+[3]+[5]
@@ -309,49 +302,70 @@ chk_cnstrnts:
           sub       al, cl
           jnz       _exit_fail
 
-          ; TODO make efficient use of vectors to calculate
-          ;   multiple constraints simultaneously
+          ; ; Extract digits and calculate constraints individually
+          ; ; TODO Can be optimized further by reusing already
+          ; ;   extracted digits
+          ;
+          ; ; The fourth digit is three more than the first digit
+          ; pextrb    ebx, xmm0, 0 ; ebx is 1st digit [0]
+          ; pextrb    eax, xmm0, 3 ; eax is 4th digit [3]
+          ; sub       al, 3
+          ; sub       al, bl
+          ; jnz       _exit_fail
 
-          ; The fourth digit is three more than the first digit
-          pextrb    ebx, xmm0, 0 ; ebx is 1st digit [0]
-          pextrb    eax, xmm0, 3 ; eax is 4th digit [3]
-          sub       al, 3
-          sub       al, bl
-          jnz       _exit_fail
+          ; ; The fifth digit is four more than the second digit
+          ; pextrb    ebx, xmm0, 1 ; ebx is 2nd digit [1]
+          ; pextrb    eax, xmm0, 4 ; eax is 5th digit [4]
+          ; sub       al, 4
+          ; sub       al, bl
+          ; jnz       _exit_fail
 
-          ; The fifth digit is four more than the second digit
-          pextrb    ebx, xmm0, 1 ; ebx is 2nd digit [1]
-          pextrb    eax, xmm0, 4 ; eax is 5th digit [4]
-          sub       al, 4
-          sub       al, bl
-          jnz       _exit_fail
+          ; ; The sixth digit is one less than the fourth digit
+          ; pextrb    ebx, xmm0, 3 ; ebx is 4th digit [3]
+          ; pextrb    eax, xmm0, 5 ; eax is 6th digit [5]
+          ; add       al, 1
+          ; sub       al, bl
+          ; jnz       _exit_fail
 
-          ; The sixth digit is one less than the fourth digit
-          pextrb    ebx, xmm0, 3 ; ebx is 4th digit [3]
-          pextrb    eax, xmm0, 5 ; eax is 6th digit [5]
-          add       al, 1
-          sub       al, bl
-          jnz       _exit_fail
+          ; ; The last digit is one less than twice the second digit
+          ; pextrb    ebx, xmm0, 1 ; ebx is 2nd digit [1]
+          ; pextrb    eax, xmm0, 6 ; eax is 7th digit [6]
+          ; sal       bl, 1
+          ; add       al, 1
+          ; sub       al, bl
+          ; jnz       _exit_fail
 
-          ; The last digit is one less than twice the second digit
-          pextrb    ebx, xmm0, 1 ; ebx is 2nd digit [1]
-          pextrb    eax, xmm0, 6 ; eax is 7th digit [6]
-          sal       bl, 1
-          add       al, 1
-          sub       al, bl
-          jnz       _exit_fail
+          ; ; The sum of the first and third digits is one more than the fourth digits
+          ; pextrb    ebx, xmm0, 0 ; ebx is 1st digit [0]
+          ; pextrb    ecx, xmm0, 2 ; ecx is 3rd digit [2]
+          ; pextrb    eax, xmm0, 3 ; eax is 4th digit [3]
+          ; add       cl, bl
+          ; add       al, 1
+          ; sub       al, cl
+          ; jz       _exit_pass
 
-          ; The sum of the first and third digits is one more than the fourth digits
-          pextrb    ebx, xmm0, 0 ; ebx is 1st digit [0]
-          pextrb    ecx, xmm0, 2 ; ecx is 3rd digit [2]
-          pextrb    eax, xmm0, 3 ; eax is 4th digit [3]
-          add       cl, bl
-          sub       al, 1
-          sub       al, cl
-          jnz       _exit_fail
-_exit_pass:
-          mov al, 0
+          ; SIMD version
+          ; Note: the above version actually executes in less time
+          ;  even though it has more than double the instructions
+          ;  because it can exit early. About 0.5% lower total
+          ;  instruction count to find the answer, according to CPU
+          ;  perf counters.
+          movdqa    xmm2, xmm0              ;a
+          movdqa    xmm3, xmm0              ;b
+          movdqa    xmm4, xmm0              ;c
+          movdqa    xmm5, xmm12             ;d
+          pshufb    xmm2, xmm13
+          pshufb    xmm3, xmm14
+          pshufb    xmm4, xmm15
+          paddb     xmm5, xmm3              ;d + b
+          psubb     xmm2, xmm4              ;a - c
+          psubb     xmm2, xmm5              ;a - c - (d + b)
+          ptest     xmm2, xmm2
+          jz        _exit_pass
+
 _exit_fail:
+          mov al, 1
+_exit_pass:
           ret
 
           section   .data
@@ -382,13 +396,25 @@ _table_insert:
 ; byte shuffle masks
           align 16
 _mask_start:
-          db        1,2,3,4,5,6,7,8,9,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF
+          db        1,2,3,4,5,6,7,8,9,0,0,0,0,0,0,0,0
           align 16
 _mask_identity:
-          db        0,1,2,3,4,5,6,7,8,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF
+          db        0,1,2,3,4,5,6,7,8,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF
           align 16
 _mask_reduce_4:
           db        4,5,6,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF
           align 16
 _mask_reduce_2:
           db        2,3,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF
+          align 16
+_mask_constraint_const:
+          db        3,4,-1,-1,-1,0,0,0,0,0,0,0,0,0,0,0
+          align 16
+_mask_constraint_a:
+          db        3,4,5,6,3,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF
+          align 16
+_mask_constraint_b:
+          db        0,1,3,1,2,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF
+          align 16
+_mask_constraint_c:
+          db        0xFF,0xFF,0xFF,1,0,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF
