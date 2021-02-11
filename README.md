@@ -12,11 +12,27 @@ Using 9 variables, we permute through all possible combinations (9! possibilitie
 - Only 7 bytes (indices 0-6) are checked against constraints.
 - Requires 36,381 permutations when starting from 123456789 to find the answer
 
+## Building ##
+- Build Requirements
+  - An x86_64 CPU that supports at least SSE3 (anything post-2005 will likely work)
+  - 'nasm' assembler--I don't think I use anything nasm-specific so any other x86_64 assembler on a Unix-like system would probably work. Just make sure it supports Intel syntax.
+  - 'sed'--The GNU version, not POSIX. The Makefile will use sed to fill in the syscall numbers for exiting and printing for either Linux or MacOS
+  - A Unix-like system--I've only tested on Linux. I hope the stuff I added for MacOS will work but I don't know for sure.
+
 ## Notes ##
+### Assembly Syntax ###
+I am using Intel syntax in this project. I have used both AT&T and Intel (and even ARM) in the past and they're all fine; no preference either way. If you're not familiar with Intel syntax, the ordering of operands may be confusing.
+- Most instructions are of the form 'op dest,src[,src,etc...]'
+- Often the destination is used as one of the source operands
+  - For example: 'add rax,rcx' means 'rax = rax + rcx'
+
+I am completely ignoring the Unix ABI calling conventions as to which function arguments are passed in which registers, which registers are callee/caller saved, etc.
+I am using a flat memory model, since there is no segmentation in 64-bit mode
+
 ### SSE/AVX ###
-- It is very hard to find examples and clear documentation of SSE/AVX instructions such as PINSRB and PSHUFB. The Intel manual shows how to use the instructions in general terms, but not clear examples of syntax or the ordering of vector elements. Various internet forum posts, almost without exception, discuss in terms of compiler instrinsics instead of the mnemonics using ATT or Intel syntax.
+It is very hard to find examples and clear documentation of SSE/AVX instructions such as PINSRB and PSHUFB. The Intel manual shows how to use the instructions in general terms, but not clear examples of syntax or the ordering of vector elements. Various internet forum posts, almost without exception, discuss in terms of compiler instrinsics instead of the mnemonics using AT&T or Intel syntax.
 - Constructing a shuffle byte mask for PSHUFB was particularly unclear. The clue I needed (that may help others) is that most SIMD-type instructions in x86_64 indicate the source element in destination element order. Meaning that, for example, element 0 of your shuffle mask containing 4 indicates that the resulting vector should get element 0 from element 4.
-- One frustrating limitation of most AVX instructions (though this is somewhat remedied with the introduction of AVX512) is that the element selection has to be an immediate value. There is no dynamic selection of elements. I worked around this by using a lot of jump tables to avoid code duplication.
+- One frustrating limitation of most SIMD instructions (though this is somewhat remedied with the introduction of AVX512) is that the element selection has to be an immediate value. There is no dynamic selection of elements. I worked around this by using some jump tables for byte insertion and extraction.
 
 ### Instruction Timing ###
 - I made extensive use of Agner Fog's instruction tables to weigh tradeoffs when deciding which SIMD instructions to use.
@@ -32,7 +48,7 @@ Using 9 variables, we permute through all possible combinations (9! possibilitie
 - This is a brute force approach, which is easier to code and reason about. Framing this problem in linear algebra terms or solving symbolically would be much more elegant.
 
 ## Performance ##
-I was able to run this on my Intel Whiskey Lake machine, and an AMD EPYC Rome machine. This is only single-threaded code, so core count doesn't help here and single-threaded performance is what we want. The performance difference between both machines wasn't discernable beyond noise.
+I was able to run this on my Intel Whiskey Lake machine, and an AMD EPYC Milan machine. This is only single-threaded code, so core count doesn't help here and single-threaded performance is what we want. The performance difference between both machines wasn't discernable beyond noise. I didn't enable any optimization in the assembler or linker.
 
 According to the 'perf' utility in Linux (which mostly just accesses CPU performance counters), I averaged the following numbers over multiple runs. My CPU frequency kept going up and down wildly (between 1.2GHZ - 4.5GHZ). Would get much more reliable performance numbers if I pinned the frequency.
 - Instruction count: 3,497,779 as of this writing

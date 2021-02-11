@@ -41,14 +41,12 @@ _failure:
 
 ; exit program in an orderly fashion 
 exit:
-          mov       rax, 60                 ; system call for exit
+          mov       rax, EXITCALL           ; system call for exit
           xor       rdi, rdi                ; exit code 0
           syscall                           ; invoke operating system to exit
 
 print:
-; TODO Get the makefile to do a text replacement here
-; I think this could run on a Mac by replacing the system call
-          mov       rax, 1                  ; system call for write
+          mov       rax, PRINTCALL          ; system call for write
           syscall                           ; invoke operating system to do the write
           ret
 
