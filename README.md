@@ -1,23 +1,31 @@
 # Overview #
+Just a simple brainteaser from a work social event. This project is a solver written in x86_64 assembly, [mostly] for fun.
 
 ## Problem Statement ##
 The security door passcode is a seven digit number whose digits total 35. The fourth digit is three more than the first digit, the fifth digit is four more than the second digit, the sixth digit is one less than the fourth digit, the last digit is one less than twice the second digit, and the sum of the first and third digits is one more than the fourth digits. However, the passcode has no repeated digits. Digits must be > 0 and < 10. What is the passcode?
 
 ## General Approach ##
+This is obviously trivial for a human with some basic knowledge of algebra. It's not an interesting problem for a human to solve, but it is a mildly interesting problem to try to get a computer to solve.<br>
+
+Rather than deriving the solution from the constraints, the approach is more brute force; trying combinations one by one and rejecting ones that don't fit.<br>
+
 Using 9 variables, we permute through all possible combinations (9! possibilities) and check the first 7 variables against the passcode constraints. With 7 unique digits in the passcode, there are 9! - 2! combinations.
 
 ## Implementation ##
 - Using Heap's algorithm for producing all permutations.
 - Specifically, we are using 9 bytes of a 128-bit x86_64 SIMD register.
 - Only 7 bytes (indices 0-6) are checked against constraints.
-- Requires 36,381 permutations when starting from 123456789 to find the answer
+- I cheated a little bit by starting off with a sequence where every digit was already unique and between 1-9.
+  - The code should work with any ordering of the digits in the starting sequence.
+- Requires 36,381 permutations when starting from 123456789 to find the answer.
 
 ## Building ##
-- Build Requirements
-  - An x86_64 CPU that supports at least SSE3 (anything post-2005 will likely work)
-  - 'nasm' assembler--I don't think I use anything nasm-specific so any other x86_64 assembler on a Unix-like system would probably work. Just make sure it supports Intel syntax.
-  - 'sed'--The GNU version, not POSIX. The Makefile will use sed to fill in the syscall numbers for exiting and printing for either Linux or MacOS
-  - A Unix-like system--I've only tested on Linux. I hope the stuff I added for MacOS will work but I don't know for sure.
+Build Requirements
+- An **x86_64** CPU that supports at least SSE3 (anything post-2005 will likely work). I've tested on both Intel and AMD CPUs.
+- **GNU Make**&mdash;Just run 'make' to assemble, link, and run the binary.
+- **NASM** (Netwide Assembler)&mdash;I don't think I use anything nasm-specific, so any other x86_64 assembler on a Unix-like system would probably work. Just make sure it supports Intel syntax.
+- **GNU sed**&mdash;The Makefile will use sed to fill in the syscall numbers for exiting and printing for either Linux or macOS.
+- A **Unix-like** system&mdash;I've tested it on Linux and macOS 10.15.
 
 ## Notes ##
 ### Assembly Syntax ###
@@ -26,8 +34,9 @@ I am using Intel syntax in this project. I have used both AT&T and Intel (and ev
 - Often the destination is used as one of the source operands
   - For example: 'add rax,rcx' means 'rax = rax + rcx'
 
-I am completely ignoring the Unix ABI calling conventions as to which function arguments are passed in which registers, which registers are callee/caller saved, etc.
-I am using a flat memory model, since there is no segmentation in 64-bit mode
+I am completely ignoring the Unix ABI calling conventions as to which function arguments are passed in which registers, which registers are callee/caller saved, etc.<br>
+
+I am using a flat memory model, since there is no segmentation in 64-bit mode.
 
 ### SSE/AVX ###
 It is very hard to find examples and clear documentation of SSE/AVX instructions such as PINSRB and PSHUFB. The Intel manual shows how to use the instructions in general terms, but not clear examples of syntax or the ordering of vector elements. Various internet forum posts, almost without exception, discuss in terms of compiler instrinsics instead of the mnemonics using AT&T or Intel syntax.
@@ -40,12 +49,13 @@ It is very hard to find examples and clear documentation of SSE/AVX instructions
 - I'm developing this on a machine with a 4-core/8-thread Intel Core i7-8665U processor (Whiskey Lake). I based my rough timing calculations on the Coffee Lake tables, even though those are 9th gen.
 
 ### Calculating Constraints ###
-- There is some value in calculating constraints one by one, as it potentially allows us to weed out incorrect passcodes earlier.
+One of the major goals of this project was to try to check constraints simultaneously with SIMD instructions.
+- There is some value in calculating constraints one by one, as it potentially allows us to weed out incorrect passcodes earlier. This probably would give a lower total runtime, so I included that code but commented it out.
 - Reordering the checks may give a faster overall runtime for a given set of starting digits.
 
 ### Drawbacks of General Approach ###
 - Because the last 2 digits are not a part of the passcode, we are generating more permutations than we need. A given incorrect 7 digit passcode may actually be checked against the constraints multiple times because it is part of multiple distinct permutations of the 9 total digits.
-- This is a brute force approach, which is easier to code and reason about. Framing this problem in linear algebra terms or solving symbolically would be much more elegant.
+- This is a brute force approach, which is straightforward to code and reason about. Framing this problem in linear algebra terms or solving symbolically would be much more elegant. (Maybe a future project...)
 
 ## Performance ##
 I was able to run this on my Intel Whiskey Lake machine, and an AMD EPYC Milan machine. This is only single-threaded code, so core count doesn't help here and single-threaded performance is what we want. The performance difference between both machines wasn't discernable beyond noise. I didn't enable any optimization in the assembler or linker.
