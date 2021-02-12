@@ -7,14 +7,14 @@
           global    _start
 _start:
 ; load masks and start permuting
-          movdqa    xmm0, [_mask_start]     ; set digits to 1-9 in order as a starting point
-          movdqa    xmm9, [_mask_identity]  ; create identity mask for later
-          movdqa    xmm10, [_mask_reduce_2]
-          movdqa    xmm11, [_mask_reduce_4]
-          movdqa    xmm12, [_mask_constraint_const] ; load constraints for later
-          movdqa    xmm13, [_mask_constraint_a]
-          movdqa    xmm14, [_mask_constraint_b]
-          movdqa    xmm15, [_mask_constraint_c]
+          movdqa    xmm0, [rel _mask_start]     ; set digits to 1-9 in order as a starting point
+          movdqa    xmm9, [rel _mask_identity]  ; create identity mask for later
+          movdqa    xmm10, [rel _mask_reduce_2]
+          movdqa    xmm11, [rel _mask_reduce_4]
+          movdqa    xmm12, [rel _mask_constraint_const] ; load constraints for later
+          movdqa    xmm13, [rel _mask_constraint_a]
+          movdqa    xmm14, [rel _mask_constraint_b]
+          movdqa    xmm15, [rel _mask_constraint_c]
           mov       r14, _table_extract     ; load jump table bases
           mov       r15, _table_insert
           call      permute

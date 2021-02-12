@@ -14,7 +14,7 @@ else ifeq ($(UNAME), Darwin)
 	ASM_FLAGS:=-fmacho64
 	PVAL:=0x02000004
 	EXVAL:=0x02000001
-	LDARGS:=-e _start -arch x86_64 -lSystem -L$(xcode-select -p)/SDKs/MacOSX.sdk/usr/lib -macosx_version_min $(sw_vers -productVersion)
+ 	LDARGS:=-e _start -arch x86_64 -lSystem -no_pie -macos_version_min $(shell sw_vers -productVersion | awk -F. '{print $$1"."$$2;}') 
 	SEDSUFFIX:=''
 else
 $(error OS not detected. Cannot fill in syscalls.)
