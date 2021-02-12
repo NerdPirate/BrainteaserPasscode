@@ -1,19 +1,20 @@
 CC=gcc
 LD=ld
 ASM=nasm
-ASM_FLAGS=-felf64
 BIN=passcode
 
 UNAME:=$(shell uname)
 ifeq ($(UNAME), Linux)
+	ASM_FLAGS:=-felf64
 	PVAL:=1
 	EXVAL:=60
 	LDARGS:=
 	SEDSUFFIX:=
 else ifeq ($(UNAME), Darwin)
+	ASM_FLAGS:=-fmacho64
 	PVAL:=0x02000004
 	EXVAL:=0x02000001
-	LDARGS:=-lSystem
+	LDARGS:=-e _start -arch x86_64 -lSystem -L$(xcode-select -p)/SDKs/MacOSX.sdk/usr/lib -macosx_version_min $(sw_vers -productVersion)
 	SEDSUFFIX:=''
 else
 $(error OS not detected. Cannot fill in syscalls.)
