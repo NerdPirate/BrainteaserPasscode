@@ -78,3 +78,11 @@ According to the 'perf' utility in Linux (which mostly just accesses CPU perform
 - It turns out that using SIMD registers and instructions has a lot more overhead than I thought. Various SIMD instructions I looked at either lack dynamic operands (pextrb/pinsrb), included unwanted effects (punpckhbw/punpcklbw), or are significantly slower than breaking the operation down and doing it with simpler instructions (phaddw). I think a much larger set of numbers and constraints would better show off the power of SIMD.
 - I was a little disappointed that I didn't even get to touch any AVX/AVX2 instructions. I think the most modern SIMD instruction set I use is SSE3.
 - I'm reminded yet again why we have optimizing compilers, and how much better they are at this than most humans.
+
+## Legal ##
+Copyright (c) 2021-2022, Eric Mackay
+
+All rights reserved.
+
+This project is licensed under the BSD-style license found in the
+LICENSE file in the root directory of this source tree.

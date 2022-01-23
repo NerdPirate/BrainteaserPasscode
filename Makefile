@@ -1,3 +1,11 @@
+#####################################################################
+# Copyright (c) 2021-2022, Eric Mackay
+# All rights reserved.
+# 
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
+#####################################################################
+
 CC=gcc
 LD=ld
 ASM=nasm
