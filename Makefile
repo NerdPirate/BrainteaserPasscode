@@ -13,7 +13,7 @@ BIN=passcode
 
 UNAME:=$(shell uname)
 ifeq ($(UNAME), Linux)
-	ASM_FLAGS:=-felf64
+	ASM_FLAGS:=-felf64 -o
 	PVAL:=1
 	EXVAL:=60
 	LDARGS:=
@@ -28,16 +28,25 @@ else
 $(error OS not detected. Cannot fill in syscalls.)
 endif
 
+ARCH:=$(shell uname -m)
+ifeq ($(ARCH), aarch64)
+	ASM=as
+	ASM_FLAGS=-o 
+	PVAL=64
+	EXVAL=93
+endif
+
+
 all: $(BIN)
 
-$(BIN): %: %.o
+$(BIN): %: $(ARCH)/%.o
 	$(LD) -o $@ $< $(LDARGS)
 	@./$@
 
-%.o: %.asm
-	@sed -i $(SEDSUFFIX) 's/PRINTCALL/$(PVAL)/g' $<
-	@sed -i $(SEDSUFFIX) 's/EXITCALL/$(EXVAL)/g' $<
-	$(ASM) $(ASM_FLAGS) $<
+$(ARCH)/%.o: $(ARCH)/%.asm
+	@sed $(SEDSUFFIX) 's/PRINTCALL/$(PVAL)/g' $< > $<.tmp
+	@sed -i $(SEDSUFFIX) 's/EXITCALL/$(EXVAL)/g' $<.tmp
+	$(ASM) $(ASM_FLAGS) $@ $<.tmp
 
 clean:
-	@rm -f *.o $(BIN)
+	@rm -f *.o *.tmp */*.tmp */*.o $(BIN)
