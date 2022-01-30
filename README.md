@@ -1,5 +1,5 @@
 # Overview #
-Just a simple brainteaser from a work social event. This project is a solver written in x86_64 assembly, [mostly] for fun.
+Just a simple brainteaser from a work social event. This project is a solver written in x86_64 assembly, [mostly] for fun. Currently porting to aarch64 assembly.
 
 ## Problem Statement ##
 The security door passcode is a seven digit number whose digits total 35. The fourth digit is three more than the first digit, the fifth digit is four more than the second digit, the sixth digit is one less than the fourth digit, the last digit is one less than twice the second digit, and the sum of the first and third digits is one more than the fourth digits. However, the passcode has no repeated digits. Digits must be > 0 and < 10. What is the passcode?
@@ -12,6 +12,9 @@ Rather than deriving the solution from the constraints, the approach is more bru
 Using 9 variables, we permute through all possible combinations (9! possibilities) and check the first 7 variables against the passcode constraints. With 7 unique digits in the passcode, there are 9! - 2! combinations.
 
 ## Implementation ##
+First and foremost, I haven't used the common practice of writing some code in a higher level language, compiling it and then copying the resulting assembly. The entire point of this project has been to develop deeper understanding of assembly, and taking shortcuts would have robbed me of some learning opportunities. As a result of that, my code may be hard to follow for those used to reading assembly compiled from other languages, and is almost assuredly less efficient than what an optimizing compiler can produce.<br>
+
+Key Points:
 - Using Heap's algorithm for producing all permutations.
 - Specifically, we are using 9 bytes of a 128-bit x86_64 SIMD register.
 - Only 7 bytes (indices 0-6) are checked against constraints.
@@ -21,15 +24,21 @@ Using 9 variables, we permute through all possible combinations (9! possibilitie
 
 ## Building ##
 Build Requirements
-- An **x86_64** CPU that supports at least SSE3 (anything post-2005 will likely work). I've tested on both Intel and AMD CPUs.
 - **GNU Make**&mdash;Just run 'make' to assemble, link, and run the binary.
-- **NASM** (Netwide Assembler)&mdash;I don't think I use anything nasm-specific, so any other x86_64 assembler on a Unix-like system would probably work. Just make sure it supports Intel syntax.
 - **GNU sed**&mdash;The Makefile will use sed to fill in the syscall numbers for exiting and printing for either Linux or macOS.
 - A **Unix-like** system&mdash;I've tested it on Linux and macOS 10.15.
+- **GNU Development Tools**&mdash;Often called 'binutils' or similar. We at least need the GNU linker 'ld'.
+- x86_64
+  - An **x86_64** CPU that supports at least SSE3 (anything post-2005 will likely work). I've tested on both Intel and AMD CPUs.
+  - **NASM** (Netwide Assembler)&mdash;I don't think I use anything nasm-specific like fancy macros, so any other x86_64 assembler on a Unix-like system   would probably work. Just make sure it supports Intel syntax.
+- ARM64/aarch64
+  - An **aarch64** ARMv8 CPU that supports 'asimd' (Advanced SIMD)
+  - **GNU assembler**&mdash;Usually included in binutils under the name 'as'.
+
 
 ## Notes ##
 ### Assembly Syntax ###
-I am using Intel syntax in this project. I have used both AT&T and Intel (and even ARM) in the past and they're all fine; no preference either way. If you're not familiar with Intel syntax, the ordering of operands may be confusing.
+I am using Intel/NASM syntax for x86_64, and GAS (GNU Assembler Syntax) for aarch64. GAS is really the only choice for aarch64, since the GNU assembler is the only mature assembler for the architecture that I've found. For x86_64 I have used both AT&T and Intel in the past and they're all fine; no preference either way. If you're not familiar with Intel syntax, the ordering of operands may be confusing.
 - Most instructions are of the form 'op dest,src[,src,etc...]'
 - Often the destination is used as one of the source operands
   - For example: 'add rax,rcx' means 'rax = rax + rcx'
@@ -38,20 +47,45 @@ I am completely ignoring the Unix ABI calling conventions as to which function a
 
 I am using a flat memory model, since there is no segmentation in 64-bit mode.
 
-### SSE/AVX ###
+### x86_84 ###
+Developed mostly on a 4-core/8-thread Intel Core i7-8665U processor (Whiskey Lake microarchitecture).<br>
+
+- https://en.wikichip.org/wiki/intel/core_i7/i7-8665u
+
+Also tested on a 64-core/128-thread AMD EPYC Milan 7J13 CPU, using the Zen 3 microarchitecture (2 sockets in the system, so 128-cores/256-threads total). The 7J13 is a custom version of what appears to be the 7713.<br>
+
+- https://en.wikichip.org/wiki/amd/epyc/7713
+- https://en.wikichip.org/wiki/amd/cores/milan
+
+#### SSE/AVX ####
 It is very hard to find examples and clear documentation of SSE/AVX instructions such as PINSRB and PSHUFB. The Intel manual shows how to use the instructions in general terms, but not clear examples of syntax or the ordering of vector elements. Various internet forum posts, almost without exception, discuss in terms of compiler instrinsics instead of the mnemonics using AT&T or Intel syntax.
 - Constructing a shuffle byte mask for PSHUFB was particularly unclear. The clue I needed (that may help others) is that most SIMD-type instructions in x86_64 indicate the source element in destination element order. Meaning that, for example, element 0 of your shuffle mask containing 4 indicates that the resulting vector should get element 0 from element 4.
 - One frustrating limitation of most SIMD instructions (though this is somewhat remedied with the introduction of AVX512) is that the element selection has to be an immediate value. There is no dynamic selection of elements. I worked around this by using some jump tables for byte insertion and extraction.
 
-### Instruction Timing ###
+#### Instruction Timing ####
 - I made extensive use of Agner Fog's instruction tables to weigh tradeoffs when deciding which SIMD instructions to use.
 - https://www.agner.org/optimize/instruction_tables.pdf
 - I'm developing this on a machine with a 4-core/8-thread Intel Core i7-8665U processor (Whiskey Lake). I based my rough timing calculations on the Coffee Lake tables, even though those are 9th gen.
 
-### Calculating Constraints ###
+#### Calculating Constraints ####
 One of the major goals of this project was to try to check constraints simultaneously with SIMD instructions.
 - There is some value in calculating constraints one by one, as it potentially allows us to weed out incorrect passcodes earlier. This probably would give a lower total runtime, so I included that code but commented it out.
 - Reordering the checks may give a faster overall runtime for a given set of starting digits.
+
+### aarch64 ###
+Developing on a 4-core 64-bit ARM Neoverse-N1 CPU. It supports the ARMv8.2 architecture.<br>
+
+- https://en.wikichip.org/wiki/arm_holdings/microarchitectures/neoverse_n1
+
+I may or may not limit my implementation to ARMv8 features available on the Cortex-A53, so it can run on my Raspberry Pi 3B.<br>
+
+- https://en.wikichip.org/wiki/arm_holdings/microarchitectures/cortex-a53
+
+#### Naming Conventions ####
+I typically use the 'aarch64' naming rather than 'arm64'. aarch64 (or AArch64) is the official name from ARM Holdings, and is used in the GNU triplet.<br>
+arm64 (or ARM64) is a competing naming scheme that was originally used in the Linux kernel to differentiate between the existing 32-bit 'arm' arch and the new 64-bit arch. The Apple LLVM compiler backend for 64-bit ARM also used ARM64 originally, but that was all renamed to aarch64 when merged with open-source LLVM.
+
+In progress.
 
 ### Drawbacks of General Approach ###
 - Because the last 2 digits are not a part of the passcode, we are generating more permutations than we need. A given incorrect 7 digit passcode may actually be checked against the constraints multiple times because it is part of multiple distinct permutations of the 9 total digits.
